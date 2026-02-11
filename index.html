@@ -3,43 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prayer Times</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Global Prayer Times Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --accent: #38bdf8;
+            --fajr: #fbbf24;
+            --dhuhr: #10b981;
+            --asr: #f97316;
+            --maghrib: #8b5cf6;
+            --isha: #6366f1;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .current-day-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .prayer-box {
+            text-align: center;
+            padding: 10px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.05);
+        }
+
+        .prayer-box h3 { margin: 0; font-size: 0.9rem; color: var(--accent); }
+        .prayer-box p { margin: 5px 0 0; font-size: 1.2rem; font-weight: bold; }
+
+        .section-title {
+            margin: 40px 0 20px;
+            border-left: 4px solid var(--accent);
+            padding-left: 15px;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            background: var(--card-bg);
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        th { background: rgba(255,255,255,0.05); color: var(--accent); }
+
+        .chart-container {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 15px;
+            height: 400px;
+        }
+    </style>
 </head>
 <body>
+
+<div class="container">
     <header>
-        <h1>Daily Prayer Times</h1>
-        <p id="location-display">Loading location...</p>
-        <button id="manual-location-btn">Set Location</button>
+        <h1>Prayer Times</h1>
+        <p id="location-name">Detecting location...</p>
+        <p id="current-date"></p>
     </header>
 
-    <main id="prayer-times-container">
-        <div class="loading-message">Loading times...</div>
-    </main>
-
-    <div id="location-modal" class="modal">
-        <div class="modal-content">
-            <span class="close-btn">&times;</span>
-            <h2>Set Location Manually</h2>
-            <div class="input-group">
-                <label for="city-input">City:</label>
-                <input type="text" id="city-input" placeholder="e.g., London">
-            </div>
-            <div class="input-group">
-                <label for="country-input">Country:</label>
-                <input type="text" id="country-input" placeholder="e.g., UK">
-            </div>
-            <button id="save-location-btn">Save Location</button>
-            <p id="manual-location-error" class="error-message"></p>
-            <hr>
-            <button id="use-gps-btn">Use Device Location (GPS)</button>
+    <div id="today-prayers" class="current-day-card">
         </div>
+
+    <h2 class="section-title">Monthly Schedule</h2>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Fajr</th>
+                    <th>Sunrise</th>
+                    <th>Dhuhr</th>
+                    <th>Asr</th>
+                    <th>Maghrib</th>
+                    <th>Isha</th>
+                </tr>
+            </thead>
+            <tbody id="monthly-table-body">
+                </tbody>
+        </table>
     </div>
 
-    <footer>
-        <p>&copy; 2025 Prayer Times</p>
-    </footer>
+    <h2 class="section-title">Prayer Time Trends</h2>
+    <div class="chart-container">
+        <canvas id="prayerChart"></canvas>
+    </div>
+</div>
 
-    <script src="script.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
