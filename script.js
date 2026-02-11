@@ -1,209 +1,109 @@
-const API_BASE_URL = 'https://api.aladhan.com/v1/timingsByCity';
-const PRAYER_NAMES = {
-    Fajr: 'Fajr',
-    Sunrise: 'Sunrise',
-    Dhuhr: 'Dhuhr',
-    Asr: 'Asr',
-    Maghrib: 'Maghrib',
-    Isha: 'Isha'
-};
-
-const container = document.getElementById('prayer-times-container');
-const locationDisplay = document.getElementById('location-display');
-const modal = document.getElementById('location-modal');
-const manualLocationBtn = document.getElementById('manual-location-btn');
-const closeBtn = document.querySelector('.close-btn');
-const saveLocationBtn = document.getElementById('save-location-btn');
-const useGpsBtn = document.getElementById('use-gps-btn');
-const cityInput = document.getElementById('city-input');
-const countryInput = document.getElementById('country-input');
-const errorMsg = document.getElementById('manual-location-error');
-
-/**
- * Initializes the application, trying to load data from storage or GPS.
- */
 document.addEventListener('DOMContentLoaded', () => {
-    let storedLocation = localStorage.getItem('prayerTimesLocation');
-
-    if (storedLocation) {
-        // Load manual or saved GPS location
-        let loc = JSON.parse(storedLocation);
-        locationDisplay.textContent = `Location: ${loc.display}`;
-        fetchPrayerTimes(loc.city, loc.country);
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(success, error);
     } else {
-        // Use device GPS if no location is stored
-        getLocationByGPS();
+        alert("Geolocation is not supported by this browser.");
     }
-
-    setupEventListeners();
 });
 
-/**
- * Sets up listeners for buttons and modal interactions.
- */
-function setupEventListeners() {
-    manualLocationBtn.onclick = () => {
-        modal.style.display = 'block';
-        cityInput.value = '';
-        countryInput.value = '';
-        errorMsg.textContent = '';
-    };
+async function success(position) {
+    const lat = position.coords.latitude;
+    const lon = position.coords.longitude;
+    const date = new Date();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
 
-    closeBtn.onclick = () => {
-        modal.style.display = 'none';
-    };
-
-    saveLocationBtn.onclick = () => {
-        const city = cityInput.value.trim();
-        const country = countryInput.value.trim();
-        if (city && country) {
-            saveAndFetchManualLocation(city, country);
-            modal.style.display = 'none';
-        } else {
-            errorMsg.textContent = 'Please enter both a City and a Country.';
-        }
-    };
-
-    useGpsBtn.onclick = () => {
-        modal.style.display = 'none';
-        getLocationByGPS();
-    };
-
-    window.onclick = (event) => {
-        if (event.target == modal) {
-            modal.style.display = 'none';
-        }
-    };
-}
-
-/**
- * Saves and fetches prayer times for a manually entered location.
- */
-function saveAndFetchManualLocation(city, country) {
-    const locData = {
-        city: city,
-        country: country,
-        display: `${city}, ${country} (Manual)`
-    };
-    localStorage.setItem('prayerTimesLocation', JSON.stringify(locData));
-    locationDisplay.textContent = `Location: ${locData.display}`;
-    fetchPrayerTimes(city, country);
-}
-
-/**
- * Uses the browser's Geolocation API to find the device's location.
- */
-function getLocationByGPS() {
-    locationDisplay.textContent = 'Getting device location...';
-    container.innerHTML = '<div class="loading-message">Waiting for GPS...</div>';
-
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            position => {
-                const { latitude, longitude } = position.coords;
-                // For GPS, we use the 'timings' API with coordinates
-                fetchPrayerTimesByCoords(latitude, longitude);
-            },
-            error => {
-                console.error('Geolocation Error:', error);
-                locationDisplay.textContent = 'Location: GPS Failed. Please set manually.';
-                container.innerHTML = '<div class="loading-message">Failed to get GPS location. Please use the "Set Location" option.</div>';
-            }
-        );
-    } else {
-        locationDisplay.textContent = 'Location: Geolocation not supported.';
-        container.innerHTML = '<div class="loading-message">Geolocation is not supported by this browser. Please set location manually.</div>';
-    }
-}
-
-/**
- * Fetches prayer times using latitude and longitude.
- */
-async function fetchPrayerTimesByCoords(latitude, longitude) {
-    const today = new Date();
-    const date = `${today.getDate()}-${today.getMonth() + 1}-${today.getFullYear()}`;
-    // Using AlAdhan API's 'timings' endpoint for coordinates
-    const url = `https://api.aladhan.com/v1/timings/${date}?latitude=${latitude}&longitude=${longitude}&method=2`; // Method 2 is ISNA
-
-    locationDisplay.textContent = `Location: Lat ${latitude.toFixed(2)}, Lon ${longitude.toFixed(2)} (GPS)`;
-    container.innerHTML = '<div class="loading-message">Fetching times...</div>';
+    document.getElementById('location-name').innerText = `Lat: ${lat.toFixed(2)}, Lon: ${lon.toFixed(2)}`;
+    document.getElementById('current-date').innerText = date.toDateString();
 
     try {
-        const response = await fetch(url);
-        const data = await response.json();
+        // Fetch monthly data from Aladhan API
+        const response = await fetch(`https://api.aladhan.com/v1/calendar/${year}/${month}?latitude=${lat}&longitude=${lon}&method=2`);
+        const result = await response.json();
+        const monthData = result.data;
 
-        if (data.code === 200) {
-            const locData = {
-                city: 'GPS_LAT_LON', // Placeholder for API calls
-                country: 'GPS_LAT_LON', // Placeholder
-                display: `Lat ${latitude.toFixed(2)}, Lon ${longitude.toFixed(2)} (GPS)`
-            };
-            // Save the coordinates to local storage (optional, for persistent data)
-            localStorage.setItem('prayerTimesLocation', JSON.stringify(locData));
-            displayPrayerTimes(data.data.timings);
-        } else {
-            throw new Error(data.status || 'Failed to fetch prayer times by coordinates.');
-        }
-    } catch (error) {
-        console.error('Error fetching prayer times by coords:', error);
-        container.innerHTML = `<div class="loading-message">Error: Could not retrieve times. ${error.message}</div>`;
+        displayToday(monthData[date.getDate() - 1].timings);
+        displayTable(monthData);
+        renderChart(monthData);
+    } catch (err) {
+        console.error("Error fetching prayer times:", err);
     }
 }
 
+function error() {
+    document.getElementById('location-name').innerText = "Location access denied. Showing default (London).";
+    // Fallback logic could go here
+}
 
-/**
- * Fetches prayer times from the AlAdhan API using city and country.
- */
-async function fetchPrayerTimes(city, country) {
-    // Current date for fetching the most relevant data
-    const today = new Date();
-    const date = `${today.getDate()}-${today.getMonth() + 1}-${today.getFullYear()}`;
+function displayToday(timings) {
+    const container = document.getElementById('today-prayers');
+    const prayers = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
     
-    // AlAdhan API: method=2 is for ISNA (Islamic Society of North America), a common standard
-    const url = `${API_BASE_URL}?city=${city}&country=${country}&date=${date}&method=2`;
-
-    container.innerHTML = '<div class="loading-message">Fetching times...</div>';
-
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-
-        if (data.code === 200) {
-            displayPrayerTimes(data.data.timings);
-        } else {
-            throw new Error(data.status || 'City/Country not found or API failed.');
-        }
-    } catch (error) {
-        console.error('Error fetching prayer times:', error);
-        container.innerHTML = `<div class="loading-message">Error: Could not retrieve times for ${city}, ${country}. Check spelling and try again.</div>`;
-    }
+    container.innerHTML = prayers.map(p => `
+        <div class="prayer-box">
+            <h3>${p}</h3>
+            <p>${timings[p].split(' ')[0]}</p>
+        </div>
+    `).join('');
 }
 
-/**
- * Renders the prayer times onto the webpage.
- */
-function displayPrayerTimes(timings) {
-    container.innerHTML = ''; // Clear the loading message/previous times
+function displayTable(data) {
+    const tableBody = document.getElementById('monthly-table-body');
+    tableBody.innerHTML = data.map(day => `
+        <tr>
+            <td>${day.date.readable}</td>
+            <td>${day.timings.Fajr.split(' ')[0]}</td>
+            <td>${day.timings.Sunrise.split(' ')[0]}</td>
+            <td>${day.timings.Dhuhr.split(' ')[0]}</td>
+            <td>${day.timings.Asr.split(' ')[0]}</td>
+            <td>${day.timings.Maghrib.split(' ')[0]}</td>
+            <td>${day.timings.Isha.split(' ')[0]}</td>
+        </tr>
+    `).join('');
+}
 
-    for (const key in PRAYER_NAMES) {
-        if (timings[key]) {
-            const time = timings[key];
-            const name = PRAYER_NAMES[key];
-            
-            const box = document.createElement('div');
-            box.classList.add('prayer-box');
+function timeToDecimal(timeStr) {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours + (minutes / 60);
+}
 
-            const nameElement = document.createElement('div');
-            nameElement.classList.add('prayer-name');
-            nameElement.textContent = name;
+function renderChart(data) {
+    const ctx = document.getElementById('prayerChart').getContext('2d');
+    
+    const labels = data.map(d => d.date.gregorian.day);
+    const prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+    const colors = ['#fbbf24', '#10b981', '#f97316', '#8b5cf6', '#6366f1'];
 
-            const timeElement = document.createElement('div');
-            timeElement.classList.add('prayer-time');
-            timeElement.textContent = time;
+    const datasets = prayers.map((prayer, index) => ({
+        label: prayer,
+        data: data.map(d => timeToDecimal(d.timings[prayer].split(' ')[0])),
+        borderColor: colors[index],
+        backgroundColor: colors[index],
+        tension: 0.3,
+        fill: false
+    }));
 
-            box.appendChild(nameElement);
-            box.appendChild(timeElement);
-            container.appendChild(box);
+    new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    title: { display: true, text: 'Time (24h Format)', color: '#fff' },
+                    ticks: { color: '#fff' },
+                    grid: { color: 'rgba(255,255,255,0.1)' }
+                },
+                x: {
+                    title: { display: true, text: 'Day of Month', color: '#fff' },
+                    ticks: { color: '#fff' },
+                    grid: { color: 'rgba(255,255,255,0.1)' }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: '#fff' } }
+            }
         }
-    }
+    });
 }
