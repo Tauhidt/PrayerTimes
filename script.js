@@ -131,23 +131,36 @@ function displayToday(t) {
 
 async function updateChart() {
     const monthsToFetch = parseInt(document.getElementById('timespanSelect').value);
-    logStatus(`Fetching ${monthsToFetch} month(s) of data for graph...`);
+    logStatus(`Fetching ${monthsToFetch} month(s) of data...`);
     
     let allData = [];
     let startM = new Date().getMonth() + 1;
     let startY = new Date().getFullYear();
 
-    for (let i = 0; i < monthsToFetch; i++) {
-        let m = ((startM + i - 1) % 12) + 1;
-        let y = startY + Math.floor((startM + i - 1) / 12);
-        logStatus(`...loading ${m}/${y}`);
-        const res = await fetch(`https://api.aladhan.com/v1/calendar/${y}/${m}?latitude=${currentCoords.lat}&longitude=${currentCoords.lon}&method=2`);
-        const json = await res.json();
-        allData = allData.concat(json.data);
+    try {
+        for (let i = 0; i < monthsToFetch; i++) {
+            let m = ((startM + i - 1) % 12) + 1;
+            let y = startY + Math.floor((startM + i - 1) / 12);
+            
+            logStatus(`Loading ${m}/${y}...`);
+            const res = await fetch(`https://api.aladhan.com/v1/calendar/${y}/${m}?latitude=${currentCoords.lat}&longitude=${currentCoords.lon}&method=2`);
+            
+            if (!res.ok) throw new Error(`API Error: ${res.status}`);
+            
+            const json = await res.json();
+            allData = allData.concat(json.data);
+            
+            // Small delay to prevent API rate limiting on 1-year fetches
+            if (monthsToFetch > 1) await new Promise(r => setTimeout(r, 100));
+        }
+        
+        logStatus("Generating graph...");
+        renderChart(allData);
+        logStatus("Graph ready.");
+    } catch (err) {
+        logStatus(`Error: ${err.message}`);
+        console.error(err);
     }
-    logStatus("Generating graph...");
-    renderChart(allData);
-    logStatus("Graph ready.");
 }
 
 function timeToDec(t) {
@@ -159,19 +172,82 @@ function renderChart(data) {
     const ctx = document.getElementById('prayerChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
 
-    const annotations = [];
+    // The Annotation plugin now prefers an OBJECT of objects, not an array
+    const annotationsObj = {};
+    
     data.forEach((d, i) => {
+        // Highlight Ramadan
         if (d.hijri.month.number === 9) {
-            annotations.push({ type: 'box', xMin: i, xMax: i + 1, backgroundColor: 'rgba(251, 191, 36, 0.1)', borderWidth: 0 });
+            annotationsObj[`ramadan-${i}`] = {
+                type: 'box',
+                xMin: i,
+                xMax: i + 1,
+                backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                borderWidth: 0,
+                drawTime: 'beforeDatasetsDraw'
+            };
         }
+
+        // Highlight Events
         const eventKey = `${parseInt(d.hijri.day)}-${d.hijri.month.number}`;
         if (KEY_EVENTS[eventKey]) {
-            annotations.push({
-                type: 'line', xMin: i, xMax: i, borderColor: '#ef4444', borderWidth: 2,
-                label: { content: KEY_EVENTS[eventKey], display: true, position: 'start', backgroundColor: '#ef4444', font: {size: 10} }
-            });
+            annotationsObj[`event-${i}`] = {
+                type: 'line',
+                xMin: i,
+                xMax: i,
+                borderColor: '#ef4444',
+                borderWidth: 2,
+                label: {
+                    content: KEY_EVENTS[eventKey],
+                    display: true,
+                    position: 'start',
+                    backgroundColor: '#ef4444',
+                    font: { size: 10 },
+                    z: 10
+                }
+            };
         }
     });
+
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.date.readable),
+            datasets: [
+                { label: 'Fajr', data: data.map(d => timeToDec(d.timings.Fajr)), borderColor: '#fbbf24', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 },
+                { label: 'Dhuhr', data: data.map(d => timeToDec(d.timings.Dhuhr)), borderColor: '#10b981', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 },
+                { label: 'Asr', data: data.map(d => timeToDec(d.timings.Asr)), borderColor: '#f97316', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 },
+                { label: 'Maghrib', data: data.map(d => timeToDec(d.timings.Maghrib)), borderColor: '#8b5cf6', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 },
+                { label: 'Isha', data: data.map(d => timeToDec(d.timings.Isha)), borderColor: '#6366f1', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                annotation: {
+                    annotations: annotationsObj
+                },
+                legend: { labels: { color: '#fff' } }
+            },
+            scales: {
+                y: { 
+                    ticks: { 
+                        color: '#fff',
+                        callback: function(value) {
+                            return Math.floor(value) + ":00";
+                        }
+                    }, 
+                    grid: { color: '#334155' } 
+                },
+                x: { 
+                    ticks: { color: '#fff', maxTicksLimit: 12 }, 
+                    grid: { display: false } 
+                }
+            }
+        }
+    });
+}
 
     chartInstance = new Chart(ctx, {
         type: 'line',
