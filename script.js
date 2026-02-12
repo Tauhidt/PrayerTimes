@@ -1,4 +1,4 @@
-// Explicitly Register the Plugin for Chart.js 4
+// Register Plugin
 if (typeof ChartAnnotation !== 'undefined') {
     Chart.register(ChartAnnotation);
 }
@@ -40,7 +40,7 @@ function setupSelectors() {
 async function useCurrentLocation() {
     const btn = document.getElementById('gpsBtn');
     btn.disabled = true;
-    logStatus("Checking GPS...");
+    logStatus("Requesting GPS...");
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(async (pos) => {
             currentCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
@@ -48,7 +48,7 @@ async function useCurrentLocation() {
             refreshUI();
             btn.disabled = false;
         }, () => {
-            logStatus("GPS Denied. Using Default.");
+            logStatus("GPS Access Denied. Falling back to default.");
             btn.disabled = false;
             refreshUI();
         }, { timeout: 8000 });
@@ -61,7 +61,7 @@ async function fetchLocationName(lat, lon) {
         const data = await res.json();
         const city = data.address.city || data.address.town || data.address.village || "Current Location";
         document.getElementById('locDisplay').innerText = city;
-    } catch (e) { logStatus("Address fetch failed."); }
+    } catch (e) { logStatus("Could not resolve address name."); }
 }
 
 async function handleManualLocation() {
@@ -76,7 +76,7 @@ async function handleManualLocation() {
             document.getElementById('locDisplay').innerText = data[0].display_name.split(',')[0];
             refreshUI();
         } else { logStatus("Location not found."); }
-    } catch (e) { logStatus("Search error."); }
+    } catch (e) { logStatus("Network error during search."); }
 }
 
 function refreshUI() {
@@ -87,10 +87,18 @@ function refreshUI() {
 async function updateCalendar() {
     const month = document.getElementById('monthSelect').value;
     const year = document.getElementById('yearSelect').value;
-    logStatus(`Syncing Calendar: ${month}/${year}`);
+    logStatus(`Fetching Calendar for ${month}/${year}`);
     try {
-        const res = await fetch(`https://api.aladhan.com/v1/calendar/${year}/${month}?latitude=${currentCoords.lat}&longitude=${currentCoords.lon}&method=2`);
+        // Rounding coordinates to 4 decimal places for API stability
+        const lat = currentCoords.lat.toFixed(4);
+        const lon = currentCoords.lon.toFixed(4);
+        const url = `https://api.aladhan.com/v1/calendar/${year}/${month}?latitude=${lat}&longitude=${lon}&method=2`;
+        
+        const res = await fetch(url);
         const result = await res.json();
+        
+        if (!result.data) throw new Error("No data returned");
+
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = result.data.map(day => {
             const isRamadan = day.hijri.month.number === 9;
@@ -106,12 +114,16 @@ async function updateCalendar() {
                     <td>${day.timings.Isha.split(' ')[0]}</td>
                 </tr>`;
         }).join('');
+        
         const d = new Date();
         if (d.getMonth() + 1 == month && d.getFullYear() == year) {
             displayToday(result.data[d.getDate()-1].timings);
             document.getElementById('dateDisplay').innerText = d.toDateString();
         }
-    } catch (e) { logStatus("Calendar fetch failed."); }
+    } catch (e) { 
+        console.error(e);
+        logStatus("Calendar Sync Failed."); 
+    }
 }
 
 function displayToday(t) {
@@ -120,28 +132,49 @@ function displayToday(t) {
 }
 
 async function updateChart() {
-    const monthsToFetch = parseInt(document.getElementById('timespanSelect').value);
-    logStatus(`Fetching graph data...`);
-    let allData = [];
-    let startM = new Date().getMonth() + 1;
-    let startY = new Date().getFullYear();
+    const timespan = parseInt(document.getElementById('timespanSelect').value);
+    logStatus(`Fetching ${timespan} months for graph...`);
+    
+    let combinedData = [];
+    const lat = currentCoords.lat.toFixed(4);
+    const lon = currentCoords.lon.toFixed(4);
+    
+    // Calculate start dates
+    let startMonth = new Date().getMonth() + 1;
+    let startYear = new Date().getFullYear();
+
     try {
-        for (let i = 0; i < monthsToFetch; i++) {
-            let m = ((startM + i - 1) % 12) + 1;
-            let y = startY + Math.floor((startM + i - 1) / 12);
-            const res = await fetch(`https://api.aladhan.com/v1/calendar/${y}/${m}?latitude=${currentCoords.lat}&longitude=${currentCoords.lon}&method=2`);
+        for (let i = 0; i < timespan; i++) {
+            let m = ((startMonth + i - 1) % 12) + 1;
+            let y = startYear + Math.floor((startMonth + i - 1) / 12);
+            
+            logStatus(`Loading ${m}/${y}...`);
+            const url = `https://api.aladhan.com/v1/calendar/${y}/${m}?latitude=${lat}&longitude=${lon}&method=2`;
+            const res = await fetch(url);
             const json = await res.json();
-            allData = allData.concat(json.data);
-            if(monthsToFetch > 1) await new Promise(r => setTimeout(r, 60)); 
+            
+            if (json.data) {
+                combinedData = combinedData.concat(json.data);
+            }
+            
+            // Artificial delay to prevent API rate limiting
+            if (timespan > 1) await new Promise(resolve => setTimeout(resolve, 150));
         }
-        renderChart(allData);
-        logStatus("Data synchronized.");
-    } catch (e) { logStatus("Graph data fetch error."); }
+
+        if (combinedData.length === 0) throw new Error("No data fetched");
+        
+        logStatus("Processing graph visualization...");
+        renderChart(combinedData);
+    } catch (err) {
+        console.error("Fetch Error:", err);
+        logStatus("Graph data fetch error. Check connection.");
+    }
 }
 
 function timeToDec(t) {
     if(!t) return 0;
-    const parts = t.split(' ')[0].split(':');
+    const cleanTime = t.split(' ')[0]; // Strip timezone strings
+    const parts = cleanTime.split(':');
     return parseInt(parts[0]) + (parseInt(parts[1]) / 60);
 }
 
@@ -154,13 +187,29 @@ function renderChart(data) {
     const annos = {};
     data.forEach((d, i) => {
         if (d.hijri.month.number === 9) {
-            annos['ram' + i] = { type: 'box', xMin: i, xMax: i + 1, backgroundColor: 'rgba(251, 191, 36, 0.15)', borderWidth: 0 };
+            annos['ram' + i] = { 
+                type: 'box', 
+                xMin: i, 
+                xMax: i + 1, 
+                backgroundColor: 'rgba(251, 191, 36, 0.15)', 
+                borderWidth: 0,
+                drawTime: 'beforeDatasetsDraw'
+            };
         }
         const eventKey = `${parseInt(d.hijri.day)}-${d.hijri.month.number}`;
         if (KEY_EVENTS[eventKey]) {
             annos['ev' + i] = {
-                type: 'line', xMin: i, xMax: i, borderColor: '#ef4444', borderWidth: 2,
-                label: { content: KEY_EVENTS[eventKey], display: true, position: 'start', backgroundColor: '#ef4444', color: '#fff', font: {size: 10} }
+                type: 'line', xMin: i, xMax: i, 
+                borderColor: '#ef4444', borderWidth: 2,
+                label: { 
+                    content: KEY_EVENTS[eventKey], 
+                    display: true, 
+                    position: 'start', 
+                    backgroundColor: '#ef4444', 
+                    color: '#fff', 
+                    font: {size: 10},
+                    z: 10
+                }
             };
         }
     });
@@ -186,14 +235,22 @@ function renderChart(data) {
                     legend: { labels: { color: '#f8fafc' } }
                 },
                 scales: {
-                    y: { ticks: { color: '#f8fafc', callback: v => Math.floor(v) + ":00" }, grid: { color: 'rgba(255,255,255,0.1)' } },
-                    x: { ticks: { color: '#f8fafc', maxTicksLimit: 10 }, grid: { display: false } }
+                    y: { 
+                        ticks: { 
+                            color: '#f8fafc', 
+                            callback: v => Math.floor(v) + ":00" 
+                        }, 
+                        grid: { color: 'rgba(255,255,255,0.1)' } 
+                    },
+                    x: { 
+                        ticks: { color: '#f8fafc', maxTicksLimit: 10 }, 
+                        grid: { display: false } 
+                    }
                 }
             }
         });
-        logStatus("Graph Rendered.");
+        logStatus("Dashboard Updated.");
     } catch (err) {
-        console.error("Chart Error:", err);
-        logStatus("Rendering Conflict detected.");
+        logStatus("Visualization Error.");
     }
 }
