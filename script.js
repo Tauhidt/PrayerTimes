@@ -1,55 +1,67 @@
-document.addEventListener('DOMContentLoaded', () => {
+let currentCoords = { lat: 51.5074, lon: -0.1278 }; // Default London
+let chartInstance = null;
+
+// Initialize App
+window.onload = () => {
+    setupSelectors();
+    useCurrentLocation();
+};
+
+function setupSelectors() {
+    const mSelect = document.getElementById('monthSelect');
+    const ySelect = document.getElementById('yearSelect');
+    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const currentYear = new Date().getFullYear();
+
+    months.forEach((m, i) => mSelect.innerHTML += `<option value="${i+1}" ${i === new Date().getMonth() ? 'selected' : ''}>${m}</option>`);
+    for(let i = currentYear - 2; i <= currentYear + 2; i++) {
+        ySelect.innerHTML += `<option value="${i}" ${i === currentYear ? 'selected' : ''}>${i}</option>`;
+    }
+}
+
+async function useCurrentLocation() {
     if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(success, error);
-    } else {
-        alert("Geolocation is not supported by this browser.");
+        navigator.geolocation.getCurrentPosition(pos => {
+            currentCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+            refreshData();
+        }, () => refreshData());
     }
-});
+}
 
-async function success(position) {
-    const lat = position.coords.latitude;
-    const lon = position.coords.longitude;
-    const date = new Date();
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-
-    document.getElementById('location-name').innerText = `Lat: ${lat.toFixed(2)}, Lon: ${lon.toFixed(2)}`;
-    document.getElementById('current-date').innerText = date.toDateString();
-
+async function handleManualLocation() {
+    const city = document.getElementById('cityInput').value;
+    if (!city) return;
     try {
-        // Fetch monthly data from Aladhan API
-        const response = await fetch(`https://api.aladhan.com/v1/calendar/${year}/${month}?latitude=${lat}&longitude=${lon}&method=2`);
-        const result = await response.json();
-        const monthData = result.data;
-
-        displayToday(monthData[date.getDate() - 1].timings);
-        displayTable(monthData);
-        renderChart(monthData);
-    } catch (err) {
-        console.error("Error fetching prayer times:", err);
-    }
+        const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}`);
+        const data = await resp.json();
+        if (data.length > 0) {
+            currentCoords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+            document.getElementById('locDisplay').innerText = data[0].display_name.split(',')[0];
+            refreshData();
+        } else { alert("Location not found"); }
+    } catch (e) { console.error(e); }
 }
 
-function error() {
-    document.getElementById('location-name').innerText = "Location access denied. Showing default (London).";
-    // Fallback logic could go here
+async function refreshData() {
+    updateCalendar();
+    updateChart();
 }
 
-function displayToday(timings) {
-    const container = document.getElementById('today-prayers');
-    const prayers = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+async function updateCalendar() {
+    const month = document.getElementById('monthSelect').value;
+    const year = document.getElementById('yearSelect').value;
+    const res = await fetch(`https://api.aladhan.com/v1/calendar/${year}/${month}?latitude=${currentCoords.lat}&longitude=${currentCoords.lon}&method=2`);
+    const data = await res.json();
     
-    container.innerHTML = prayers.map(p => `
-        <div class="prayer-box">
-            <h3>${p}</h3>
-            <p>${timings[p].split(' ')[0]}</p>
-        </div>
-    `).join('');
-}
+    // Update Today Card (if viewing current month)
+    const today = new Date();
+    if (today.getMonth() + 1 == month && today.getFullYear() == year) {
+        displayToday(data.data[today.getDate() - 1].timings);
+    }
 
-function displayTable(data) {
-    const tableBody = document.getElementById('monthly-table-body');
-    tableBody.innerHTML = data.map(day => `
+    // Populate Table
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = data.data.map(day => `
         <tr>
             <td>${day.date.readable}</td>
             <td>${day.timings.Fajr.split(' ')[0]}</td>
@@ -62,48 +74,57 @@ function displayTable(data) {
     `).join('');
 }
 
-function timeToDecimal(timeStr) {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return hours + (minutes / 60);
+function displayToday(timings) {
+    const keys = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
+    document.getElementById('todayGrid').innerHTML = keys.map(k => `
+        <div class="prayer-box"><h3>${k}</h3><p>${timings[k].split(' ')[0]}</p></div>
+    `).join('');
+}
+
+async function updateChart() {
+    const monthsToFetch = parseInt(document.getElementById('timespanSelect').value);
+    const startMonth = new Date().getMonth() + 1;
+    const year = new Date().getFullYear();
+    
+    let allData = [];
+    // Loop to fetch multiple months if necessary (1, 3, or 12)
+    for (let i = 0; i < monthsToFetch; i++) {
+        let m = ((startMonth + i - 1) % 12) + 1;
+        let y = year + Math.floor((startMonth + i - 1) / 12);
+        const res = await fetch(`https://api.aladhan.com/v1/calendar/${y}/${m}?latitude=${currentCoords.lat}&longitude=${currentCoords.lon}&method=2`);
+        const json = await res.json();
+        allData = allData.concat(json.data);
+    }
+
+    renderChart(allData);
+}
+
+function timeToDec(t) {
+    const [h, m] = t.split(' ')[0].split(':').map(Number);
+    return h + (m / 60);
 }
 
 function renderChart(data) {
     const ctx = document.getElementById('prayerChart').getContext('2d');
-    
-    const labels = data.map(d => d.date.gregorian.day);
-    const prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
-    const colors = ['#fbbf24', '#10b981', '#f97316', '#8b5cf6', '#6366f1'];
+    if (chartInstance) chartInstance.destroy();
 
-    const datasets = prayers.map((prayer, index) => ({
-        label: prayer,
-        data: data.map(d => timeToDecimal(d.timings[prayer].split(' ')[0])),
-        borderColor: colors[index],
-        backgroundColor: colors[index],
-        tension: 0.3,
-        fill: false
-    }));
+    const labels = data.map(d => d.date.readable);
+    const datasets = [
+        { label: 'Fajr', data: data.map(d => timeToDec(d.timings.Fajr)), borderColor: '#fbbf24' },
+        { label: 'Maghrib', data: data.map(d => timeToDec(d.timings.Maghrib)), borderColor: '#8b5cf6' },
+        { label: 'Isha', data: data.map(d => timeToDec(d.timings.Isha)), borderColor: '#6366f1' }
+    ];
 
-    new Chart(ctx, {
+    chartInstance = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            elements: { point: { radius: data.length > 31 ? 0 : 3 } },
             scales: {
-                y: {
-                    title: { display: true, text: 'Time (24h Format)', color: '#fff' },
-                    ticks: { color: '#fff' },
-                    grid: { color: 'rgba(255,255,255,0.1)' }
-                },
-                x: {
-                    title: { display: true, text: 'Day of Month', color: '#fff' },
-                    ticks: { color: '#fff' },
-                    grid: { color: 'rgba(255,255,255,0.1)' }
-                }
+                y: { ticks: { callback: v => Math.floor(v) + ":00" }, grid: { color: '#334155' } },
+                x: { ticks: { maxTicksLimit: 10 }, grid: { display: false } }
             },
-            plugins: {
-                legend: { labels: { color: '#fff' } }
-            }
+            plugins: { legend: { position: 'bottom', labels: { color: '#fff' } } }
         }
     });
 }
