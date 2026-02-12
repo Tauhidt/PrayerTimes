@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Islamic Prayer Dashboard - High Reliability</title>
+    <title>Islamic Prayer Dashboard - Robust Version</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <style>
@@ -17,7 +17,7 @@
         #statusLog {
             background: var(--log-bg); color: #10b981; font-family: monospace;
             padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 0.85rem;
-            border-left: 4px solid var(--accent); min-height: 1.2rem; white-space: pre-wrap;
+            border-left: 4px solid var(--accent); min-height: 1.2rem;
         }
         .controls { background: var(--card-bg); padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: space-between; }
         .search-group { display: flex; gap: 8px; flex-grow: 1; max-width: 600px; }
@@ -34,21 +34,23 @@
         table { width: 100%; border-collapse: collapse; }
         th { position: sticky; top: 0; background: #334155; padding: 12px; z-index: 10; text-align: left; }
         td { padding: 12px; border-bottom: 1px solid #334155; }
-        .chart-container { height: 450px; position: relative; width: 100%; }
+        .chart-container { height: 450px; position: relative; width: 100%; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.1); border-radius: 12px; }
+        #prayerChart { width: 100% !important; height: 100% !important; }
+        .chart-placeholder { position: absolute; color: #64748b; font-style: italic; }
     </style>
 </head>
 <body>
 <div class="container">
-    <div id="statusLog">> System Initialized.</div>
+    <div id="statusLog">> System Initializing...</div>
     <div class="controls">
         <div class="search-group">
-            <input type="text" id="cityInput" placeholder="City Name (e.g., Dubai)">
+            <input type="text" id="cityInput" placeholder="Enter city...">
             <button class="btn-search" onclick="handleManualLocation()">Set</button>
             <button class="btn-gps" id="gpsBtn" onclick="useCurrentLocation()">📍 GPS</button>
         </div>
         <div class="date-selectors">
-            <select id="monthSelect" onchange="updateCalendar()"></select>
-            <select id="yearSelect" onchange="updateCalendar()"></select>
+            <select id="monthSelect" onchange="refreshUI()"></select>
+            <select id="yearSelect" onchange="refreshUI()"></select>
         </div>
     </div>
     <header style="text-align:center; margin-bottom: 20px;">
@@ -77,6 +79,7 @@
             </select>
         </div>
         <div class="chart-container">
+            <div id="chartLoading" class="chart-placeholder">Loading chart data...</div>
             <canvas id="prayerChart"></canvas>
         </div>
     </div>
