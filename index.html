@@ -3,55 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Prayer Dashboard</title>
+    <title>Islamic Prayer Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.1.0"></script>
     <style>
         :root {
             --bg-color: #0f172a; --card-bg: #1e293b; --text-main: #f8fafc;
-            --accent: #38bdf8; --fajr: #fbbf24; --maghrib: #8b5cf6;
+            --accent: #38bdf8; --ramadan-gold: rgba(251, 191, 36, 0.2);
         }
         body { font-family: 'Inter', sans-serif; background: var(--bg-color); color: var(--text-main); margin: 0; padding: 20px; }
         .container { max-width: 1100px; margin: 0 auto; }
-        
-        /* Controls Section */
         .controls { background: var(--card-bg); padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: space-between; }
-        .search-box { display: flex; gap: 5px; }
-        input, select, button { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; outline: none; }
+        input, select, button { padding: 8px 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; }
         button { background: var(--accent); color: #000; font-weight: bold; cursor: pointer; border: none; }
-        button:hover { opacity: 0.8; }
-
-        /* Today's Times */
-        .current-day-card { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        
         .prayer-box { background: var(--card-bg); text-align: center; padding: 20px; border-radius: 12px; border-bottom: 4px solid var(--accent); }
-        .prayer-box h3 { margin: 0; font-size: 0.8rem; text-transform: uppercase; color: var(--accent); }
-        .prayer-box p { margin: 10px 0 0; font-size: 1.5rem; font-weight: bold; }
-
-        /* Table and Chart */
+        .current-day-card { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        
+        .ramadan-row { background-color: var(--ramadan-gold) !important; }
+        .event-badge { font-size: 0.7rem; background: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 5px; }
+        
         .section { background: var(--card-bg); padding: 20px; border-radius: 12px; margin-bottom: 30px; }
-        .table-wrapper { overflow-x: auto; max-height: 400px; overflow-y: auto; }
+        .table-wrapper { overflow-x: auto; max-height: 400px; }
         table { width: 100%; border-collapse: collapse; }
-        th { position: sticky; top: 0; background: #334155; padding: 12px; text-align: left; }
+        th { position: sticky; top: 0; background: #334155; padding: 12px; }
         td { padding: 12px; border-bottom: 1px solid #334155; }
-        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        canvas { max-height: 450px; }
     </style>
 </head>
 <body>
-
 <div class="container">
     <div class="controls">
-        <div class="search-box">
-            <input type="text" id="cityInput" placeholder="Enter city (e.g. London)">
-            <button onclick="handleManualLocation()">Set Location</button>
-            <button onclick="useCurrentLocation()" style="background: #64748b;">📍 GPS</button>
-        </div>
+        <input type="text" id="cityInput" placeholder="Enter city (e.g. Mecca)">
+        <button onclick="handleManualLocation()">Set Location</button>
         <div class="date-selectors">
             <select id="monthSelect" onchange="updateCalendar()"></select>
             <select id="yearSelect" onchange="updateCalendar()"></select>
         </div>
     </div>
 
-    <header style="text-align:center; margin-bottom: 20px;">
+    <header style="text-align:center;">
         <h1 id="locDisplay">Prayer Times</h1>
         <p id="dateDisplay"></p>
     </header>
@@ -59,11 +49,11 @@
     <div id="todayGrid" class="current-day-card"></div>
 
     <div class="section">
-        <h3>Monthly Schedule</h3>
+        <h3>Monthly Schedule (Highlights: Ramadan & Holidays)</h3>
         <div class="table-wrapper">
             <table>
                 <thead>
-                    <tr><th>Date</th><th>Fajr</th><th>Sunrise</th><th>Dhuhr</th><th>Asr</th><th>Maghrib</th><th>Isha</th></tr>
+                    <tr><th>Date (Hijri)</th><th>Fajr</th><th>Dhuhr</th><th>Asr</th><th>Maghrib</th><th>Isha</th></tr>
                 </thead>
                 <tbody id="tableBody"></tbody>
             </table>
@@ -71,18 +61,17 @@
     </div>
 
     <div class="section">
-        <div class="chart-header">
+        <div style="display:flex; justify-content:space-between;">
             <h3>Prayer Trends</h3>
             <select id="timespanSelect" onchange="updateChart()">
                 <option value="1">1 Month</option>
-                <option value="3">90 Days (3 Months)</option>
+                <option value="3">90 Days</option>
                 <option value="12">1 Year</option>
             </select>
         </div>
         <canvas id="prayerChart"></canvas>
     </div>
 </div>
-
 <script src="script.js"></script>
 </body>
 </html>
