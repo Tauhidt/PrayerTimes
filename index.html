@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Islamic Prayer Dashboard</title>
+    <title>Islamic Prayer Dashboard - High Reliability</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <style>
@@ -17,7 +17,7 @@
         #statusLog {
             background: var(--log-bg); color: #10b981; font-family: monospace;
             padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 0.85rem;
-            border-left: 4px solid var(--accent); min-height: 1.2rem;
+            border-left: 4px solid var(--accent); min-height: 1.2rem; white-space: pre-wrap;
         }
         .controls { background: var(--card-bg); padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: space-between; }
         .search-group { display: flex; gap: 8px; flex-grow: 1; max-width: 600px; }
@@ -39,10 +39,10 @@
 </head>
 <body>
 <div class="container">
-    <div id="statusLog">> Initializing...</div>
+    <div id="statusLog">> System Initialized.</div>
     <div class="controls">
         <div class="search-group">
-            <input type="text" id="cityInput" placeholder="Enter city...">
+            <input type="text" id="cityInput" placeholder="City Name (e.g., Dubai)">
             <button class="btn-search" onclick="handleManualLocation()">Set</button>
             <button class="btn-gps" id="gpsBtn" onclick="useCurrentLocation()">📍 GPS</button>
         </div>
@@ -51,7 +51,7 @@
             <select id="yearSelect" onchange="updateCalendar()"></select>
         </div>
     </div>
-    <header style="text-align:center; margin-bottom: 30px;">
+    <header style="text-align:center; margin-bottom: 20px;">
         <h1 id="locDisplay" style="margin:0;">Prayer Times</h1>
         <p id="dateDisplay" style="color: var(--accent);"></p>
     </header>
@@ -71,9 +71,9 @@
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
             <h3>Prayer Trends</h3>
             <select id="timespanSelect" onchange="updateChart()">
-                <option value="1">1 Month</option>
-                <option value="3">90 Days</option>
-                <option value="12">1 Year</option>
+                <option value="1">Current Month</option>
+                <option value="3">3 Months</option>
+                <option value="12">Full Year</option>
             </select>
         </div>
         <div class="chart-container">
