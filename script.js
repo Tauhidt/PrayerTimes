@@ -1,14 +1,9 @@
-// Register Chart.js Plugin
 if (typeof ChartAnnotation !== 'undefined') { Chart.register(ChartAnnotation); }
 
 let currentCoords = { lat: 21.4225, lon: 39.8262 };
 let chartInstance = null;
 
-const KEY_EVENTS = {
-    "17-9": "Battle of Badr",
-    "1-10": "Eid al-Fitr",
-    "10-12": "Eid al-Adha"
-};
+const KEY_EVENTS = { "17-9": "Battle of Badr", "1-10": "Eid al-Fitr", "10-12": "Eid al-Adha" };
 
 document.addEventListener('DOMContentLoaded', () => {
     setupSelectors();
@@ -34,14 +29,14 @@ function setupSelectors() {
     }
 }
 
+// Optimized Fetch with Logic for CORS Issues
 async function safeFetch(url) {
     try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return await response.json();
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("API Limit");
+        return await res.json();
     } catch (e) {
-        // Fallback: Use a CORS proxy if the direct request fails
-        logStatus(`Direct fetch failed, trying proxy for: ${url.split('v1/')[1].split('?')[0]}`);
+        logStatus("Retrying via secondary route...");
         const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
         const res = await fetch(proxyUrl);
         const json = await res.json();
@@ -52,7 +47,7 @@ async function safeFetch(url) {
 async function useCurrentLocation() {
     const btn = document.getElementById('gpsBtn');
     btn.disabled = true;
-    logStatus("Detecting GPS...");
+    logStatus("Detecting Location...");
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(async (pos) => {
             currentCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
@@ -60,25 +55,23 @@ async function useCurrentLocation() {
             refreshUI();
             btn.disabled = false;
         }, () => {
-            logStatus("GPS Offline. Using Mecca default.");
+            logStatus("GPS Access Denied.");
             btn.disabled = false;
             refreshUI();
-        }, { timeout: 6000 });
+        }, { timeout: 5000 });
     }
 }
 
 async function fetchLocationName(lat, lon) {
     try {
         const data = await safeFetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-        const city = data.address.city || data.address.town || data.address.village || "Detected Area";
-        document.getElementById('locDisplay').innerText = city;
-    } catch (e) { logStatus("Address name lookup failed."); }
+        document.getElementById('locDisplay').innerText = data.address.city || data.address.town || "My Location";
+    } catch (e) { logStatus("Address lookup offline."); }
 }
 
 async function handleManualLocation() {
     const city = document.getElementById('cityInput').value;
     if (!city) return;
-    logStatus(`Searching: ${city}`);
     try {
         const data = await safeFetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}`);
         if (data && data.length > 0) {
@@ -86,18 +79,22 @@ async function handleManualLocation() {
             document.getElementById('locDisplay').innerText = data[0].display_name.split(',')[0];
             refreshUI();
         }
-    } catch (e) { logStatus("Manual search failed."); }
+    } catch (e) { logStatus("City search failed."); }
 }
 
-function refreshUI() {
-    updateCalendar();
+// CRITICAL FIX: Non-blocking UI Refresh
+async function refreshUI() {
+    // 1. Get Table and Today's data immediately
+    await updateCalendar();
+    
+    // 2. Start Graph process in background
     updateChart();
 }
 
 async function updateCalendar() {
     const m = document.getElementById('monthSelect').value;
     const y = document.getElementById('yearSelect').value;
-    logStatus(`Syncing schedule for ${m}/${y}...`);
+    logStatus(`Fetching Schedule...`);
     try {
         const url = `https://api.aladhan.com/v1/calendar/${y}/${m}?latitude=${currentCoords.lat}&longitude=${currentCoords.lon}&method=2`;
         const result = await safeFetch(url);
@@ -105,10 +102,8 @@ async function updateCalendar() {
         const tbody = document.getElementById('tableBody');
         tbody.innerHTML = result.data.map(day => {
             const isRamadan = day.hijri.month.number === 9;
-            const eventKey = `${parseInt(day.hijri.day)}-${day.hijri.month.number}`;
-            const eventName = KEY_EVENTS[eventKey] || (day.hijri.holidays[0] || "");
             return `<tr class="${isRamadan ? 'ramadan-row' : ''}">
-                <td>${day.hijri.day} ${day.hijri.month.en} ${day.hijri.year} ${eventName ? `<span class="event-badge">${eventName}</span>` : ''}</td>
+                <td>${day.hijri.day} ${day.hijri.month.en}</td>
                 <td>${day.timings.Fajr.split(' ')[0]}</td>
                 <td>${day.timings.Dhuhr.split(' ')[0]}</td>
                 <td>${day.timings.Asr.split(' ')[0]}</td>
@@ -122,17 +117,24 @@ async function updateCalendar() {
             displayToday(result.data[d.getDate()-1].timings);
             document.getElementById('dateDisplay').innerText = d.toDateString();
         }
-    } catch (e) { logStatus("Calendar connection failed."); }
+        logStatus("Schedule ready.");
+    } catch (e) { logStatus("Table update failed."); }
 }
 
 function displayToday(t) {
     const keys = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
-    document.getElementById('todayGrid').innerHTML = keys.map(k => `<div class="prayer-box"><h3>${k}</h3><p>${t[k].split(' ')[0]}</p></div>`).join('');
+    document.getElementById('todayGrid').innerHTML = keys.map(k => `
+        <div class="prayer-box"><h3>${k}</h3><p>${t[k].split(' ')[0]}</p></div>
+    `).join('');
 }
 
 async function updateChart() {
+    const loader = document.getElementById('chartLoading');
+    const canvas = document.getElementById('prayerChart');
+    loader.style.display = "block";
+    canvas.style.opacity = "0.2";
+
     const timespan = parseInt(document.getElementById('timespanSelect').value);
-    logStatus(`Fetching graph data (${timespan} months)...`);
     let combinedData = [];
     let startM = new Date().getMonth() + 1;
     let startY = new Date().getFullYear();
@@ -144,11 +146,15 @@ async function updateChart() {
             const url = `https://api.aladhan.com/v1/calendar/${y}/${m}?latitude=${currentCoords.lat}&longitude=${currentCoords.lon}&method=2`;
             const json = await safeFetch(url);
             if (json.data) combinedData = combinedData.concat(json.data);
-            if (timespan > 1) await new Promise(r => setTimeout(r, 200)); 
+            if (timespan > 1) await new Promise(r => setTimeout(r, 100));
         }
         renderChart(combinedData);
-        logStatus("Graph updated successfully.");
-    } catch (e) { logStatus("Error: Could not render graph."); }
+        loader.style.display = "none";
+        canvas.style.opacity = "1";
+    } catch (e) { 
+        logStatus("Graph loading skipped/failed."); 
+        loader.innerText = "Graph unavailable for this location.";
+    }
 }
 
 function timeToDec(t) {
@@ -164,11 +170,7 @@ function renderChart(data) {
     const annos = {};
     data.forEach((d, i) => {
         if (d.hijri.month.number === 9) {
-            annos['ram'+i] = { type: 'box', xMin: i, xMax: i + 1, backgroundColor: 'rgba(251, 191, 36, 0.15)', borderWidth: 0, drawTime: 'beforeDatasetsDraw' };
-        }
-        const eventKey = `${parseInt(d.hijri.day)}-${d.hijri.month.number}`;
-        if (KEY_EVENTS[eventKey]) {
-            annos['ev'+i] = { type: 'line', xMin: i, xMax: i, borderColor: '#ef4444', borderWidth: 2, label: { content: KEY_EVENTS[eventKey], display: true, position: 'start', backgroundColor: '#ef4444', font: {size: 10} } };
+            annos['ram'+i] = { type: 'box', xMin: i, xMax: i + 1, backgroundColor: 'rgba(251, 191, 36, 0.1)', borderWidth: 0 };
         }
     });
 
@@ -177,19 +179,16 @@ function renderChart(data) {
         data: {
             labels: data.map(d => d.date.readable),
             datasets: [
-                { label: 'Fajr', data: data.map(d => timeToDec(d.timings.Fajr)), borderColor: '#fbbf24', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 },
-                { label: 'Dhuhr', data: data.map(d => timeToDec(d.timings.Dhuhr)), borderColor: '#10b981', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 },
-                { label: 'Asr', data: data.map(d => timeToDec(d.timings.Asr)), borderColor: '#f97316', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 },
-                { label: 'Maghrib', data: data.map(d => timeToDec(d.timings.Maghrib)), borderColor: '#8b5cf6', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 },
-                { label: 'Isha', data: data.map(d => timeToDec(d.timings.Isha)), borderColor: '#6366f1', tension: 0.1, pointRadius: data.length > 31 ? 0 : 2 }
+                { label: 'Fajr', data: data.map(d => timeToDec(d.timings.Fajr)), borderColor: '#fbbf24', tension: 0.3, pointRadius: 0 },
+                { label: 'Maghrib', data: data.map(d => timeToDec(d.timings.Maghrib)), borderColor: '#8b5cf6', tension: 0.3, pointRadius: 0 }
             ]
         },
         options: {
             maintainAspectRatio: false,
             plugins: { annotation: { annotations: annos }, legend: { labels: { color: '#fff' } } },
             scales: {
-                y: { ticks: { color: '#fff', callback: v => Math.floor(v) + ":00" }, grid: { color: 'rgba(255,255,255,0.1)' } },
-                x: { ticks: { color: '#fff', maxTicksLimit: 10 }, grid: { display: false } }
+                y: { ticks: { color: '#fff' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                x: { ticks: { display: false }, grid: { display: false } }
             }
         }
     });
